@@ -6,6 +6,7 @@ from functools import partial
 import pandas as pd
 import numpy as np
 import math
+import os
 import random
 import scipy
 from gen_partition_random_starting_nodes import grow_districts
@@ -296,7 +297,7 @@ def custom_within_percent_of_ideal_population(epsilon, pop_key="pop"):
     return within_epsilon_of_ideal
 
 # phase 2: optimize compactness with a population constraint
-def run_phase2(phase1_partition, partition_file, phase_length, epsilon=0.05):
+def run_phase2(phase1_partition, partition_file, phase_length, epsilon=0.01):
     graph = Graph.from_json(partition_file)
     
     # convert assignment to dict
@@ -371,7 +372,7 @@ def run_phase2(phase1_partition, partition_file, phase_length, epsilon=0.05):
     # print(f"Best compactness (cut edges): {best_score}")
     return best_partition, pd.DataFrame(step_data)
 
-def run_chain(chain_num, partition_file, phase_length, epsilon=0.05, initial_assignment=None):
+def run_chain(chain_num, partition_file, phase_length, epsilon=0.05, initial_assignment=None, file_id=""):
     # phase 1: optimize population
     phase1_best, phase1_stats = run_phase1(
         chain_num,
@@ -470,20 +471,20 @@ def run_chain(chain_num, partition_file, phase_length, epsilon=0.05, initial_ass
 
     plt.tight_layout()
     if chain_num == 0:
-        with open('./results/chain-final-partitions/spanning_tree_final_partition.json', 'w') as f:
+        with open(f'./results/chain-final-partitions/spanning_tree_final_partition{file_id}.json', 'w') as f:
             json.dump({str(k): v for k, v in phase2_best.assignment.items()}, f)
-        plt.savefig("./results/chain-final-stats/spanning_tree_stats.png")
-        plt.show()
+        plt.savefig(f"./results/chain-final-stats/spanning_tree_stats{file_id}.png")
+        # plt.show()
     elif chain_num == 1:
         with open('./results/chain-final-partitions/random_nodes_final_partition.json', 'w') as f:
             json.dump({str(k): v for k, v in phase2_best.assignment.items()}, f)
         plt.savefig("./results/chain-final-stats/random_nodes_stats.png")
-        plt.show()
+        # plt.show()
     else:
         with open('./results/chain-final-partitions/current_districting_final_partition.json', 'w') as f:
             json.dump({str(k): v for k, v in phase2_best.assignment.items()}, f)
         plt.savefig("./results/chain-final-stats/current_districting_stats.png")
-        plt.show()
+        # plt.show()
     plt.close()
 
     return phase2_best, combined_stats
@@ -553,15 +554,15 @@ if __name__ == "__main__":
     epsilon = 0.05
 
     graph = Graph.from_json(partition_file)
-    gdf = gpd.read_file(f"../data/shapefile_with_islands/{shapefile}")
+    # gdf = gpd.read_file(f"../data/shapefile_with_islands/{shapefile}")
 
     # spanning_tree_partition = generate_spanning_tree_partition(graph, 52)
     # # save to json file (don't use unless necessary, the partitions saved now work with the chain)
     # with open('./chain-initial-partitions/spanning_tree_partition.json', 'w') as f:
     #     json.dump({str(k): v for k, v in spanning_tree_partition.items()}, f)
     # # read from existing json file
-    with open('./chain-initial-partitions/spanning_tree_initial_partition.json', 'r') as f:
-        spanning_tree_partition = {int(k): v for k, v in json.load(f).items()}
+    # with open('./chain-initial-partitions/spanning_tree_initial_partition.json', 'r') as f:
+    #     spanning_tree_partition = {int(k): v for k, v in json.load(f).items()}
 
     # random_nodes_partition = grow_districts(graph, 52, gdf)
     # # save to json file (don't use unless necessary, the partitions saved now work with the chain)
@@ -589,6 +590,15 @@ if __name__ == "__main__":
     # verify_partition(graph, current_districting_partition)
 
     # Then run the chain
-    run_chain(chain_num=0, partition_file=partition_file, phase_length=phase_len, epsilon=epsilon, initial_assignment=spanning_tree_partition)
+    # run_chain(chain_num=0, partition_file=partition_file, phase_length=phase_len, epsilon=epsilon, initial_assignment=spanning_tree_partition)
     # run_chain(chain_num=1, partition_file=partition_file, phase_length=phase_len, epsilon=epsilon, initial_assignment=random_nodes_partition)
     # run_chain(chain_num=2, partition_file=partition_file, phase_length=phase_len, epsilon=epsilon, initial_assignment=current_districting_partition)
+
+    for i in range(9, 10):
+        spanning_tree_partition = generate_spanning_tree_partition(graph, 52)
+        run_chain(chain_num=0, 
+                  partition_file=partition_file, 
+                  phase_length=phase_len, 
+                  epsilon=epsilon, 
+                  initial_assignment=spanning_tree_partition,
+                  file_id=i)
