@@ -31,7 +31,7 @@ add_edge("060590629001", "060590635001") # Newport Beach
 add_edge("060590630062", "060590630051") # Newport Beach
 add_edge("060730109001", "060730050001") # Coronado - San Diego
 
-graph.to_json("./dual-graph.json")
+graph.to_json("./graph/dual-graph.json")
 
 positions = {node: (row.geometry.centroid.x, row.geometry.centroid.y) for node, row in gdf.iterrows()}
 nx.draw(graph, pos=positions, node_size=10, edge_color="blue")
