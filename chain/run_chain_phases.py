@@ -1,14 +1,10 @@
-import geopandas as gpd
 from gerrychain import Graph, Partition
 import networkx as nx
 import matplotlib.pyplot as plt
-from functools import partial
 import pandas as pd
 import numpy as np
 import math
-import os
 import random
-import scipy
 from gen_partition_random_starting_nodes import grow_districts
 from gen_partition_spanning_tree import generate_spanning_tree_partition
 from gerrychain.updaters import Tally, cut_edges
@@ -17,6 +13,7 @@ from gerrychain.constraints import contiguous, within_percent_of_ideal_populatio
 from gerrychain.proposals import propose_random_flip
 from gerrychain.optimization import SingleMetricOptimizer
 import json
+from pathlib import Path
 
 # population metric: penalizes imbalances
 def pop_with_comp(partition):
