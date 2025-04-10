@@ -3,6 +3,9 @@ from gerrychain import Graph, Partition
 import json
 from collections import defaultdict
 
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import norm
 
 if __name__ == "__main__":
     shapefile = "../data/shapefile_with_islands/shapefile_with_islands.shp"
@@ -39,3 +42,17 @@ if __name__ == "__main__":
 
     print(dem_votes)
     print(rep_votes)
+
+    count, bins, _ = plt.hist(dem_votes, bins=12, density=True, alpha=0.6, color='b', edgecolor='black')
+    mu, sigma = np.mean(dem_votes), np.std(dem_votes)
+    x = np.linspace(40, 52, 100)
+    pdf = norm.pdf(x, mu, sigma)
+    plt.plot(x, pdf, 'r', linewidth=2, label=f'Normal Fit ($\\mu$={mu:.2f}, $\\sigma$={sigma:.2f})')
+
+    # Labels and title
+    plt.xlabel('Value')
+    plt.ylabel('Density')
+    plt.title('Dem Seats')
+    plt.legend()
+    plt.show()
+

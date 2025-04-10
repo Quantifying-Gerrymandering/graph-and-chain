@@ -16,6 +16,8 @@ from gerrychain import MarkovChain
 from gerrychain.constraints import contiguous, within_percent_of_ideal_population
 from gerrychain.proposals import propose_random_flip
 from gerrychain.optimization import SingleMetricOptimizer
+from gerrychain.proposals import recom
+from gerrychain.accept import always_accept
 import json
 
 # population metric: penalizes imbalances
@@ -297,7 +299,7 @@ def custom_within_percent_of_ideal_population(epsilon, pop_key="pop"):
     return within_epsilon_of_ideal
 
 # phase 2: optimize compactness with a population constraint
-def run_phase2(phase1_partition, partition_file, phase_length, epsilon=0.01):
+def run_phase2(phase1_partition, partition_file, phase_length, epsilon=0.05):
     graph = Graph.from_json(partition_file)
     
     # convert assignment to dict
@@ -370,6 +372,65 @@ def run_phase2(phase1_partition, partition_file, phase_length, epsilon=0.01):
 
     # print("Phase 2 done")
     # print(f"Best compactness (cut edges): {best_score}")
+    return best_partition, pd.DataFrame(step_data)
+
+def run_phase2_recom(phase1_partition, partition_file, phase_length, epsilon=0.05):
+    graph = Graph.from_json(partition_file)
+    
+    # convert assignment to dict
+    if not isinstance(phase1_partition.assignment, dict):
+        assignment_dict = dict(phase1_partition.assignment)
+    else:
+        assignment_dict = phase1_partition.assignment
+
+    initial_partition = Partition(
+        graph,
+        assignment=assignment_dict,
+        updaters={
+            "pop": Tally("CENS_Total", alias="pop"),
+            "cut_edges": cut_edges,
+        }
+    )
+
+    ideal_population = sum(initial_partition["pop"].values()) / len(initial_partition)
+
+    proposal = partial(
+        recom,
+        pop_col="CENS_Total",
+        pop_target=ideal_population,
+        epsilon=epsilon,
+        node_repeats=2
+    )
+
+    recom_chain = MarkovChain(
+        proposal=proposal,
+        constraints=[contiguous],
+        accept=always_accept,
+        initial_state=initial_partition,
+        total_steps=phase_length
+    )
+
+    best_partition = None
+    best_score = float("inf")
+    step_data = []
+
+    for i, part in enumerate(recom_chain):
+        current_comp = comp(part)
+        if current_comp < best_score:
+            best_score = current_comp
+            best_partition = part
+
+        step_data.append({
+            "iteration": i,
+            "pop_score": pop_with_comp(part),
+            "min_pop": min(part["pop"].values()),
+            "max_pop": max(part["pop"].values()),
+            "pop_max_dev": pop_max_dev(part),
+            "comp_score": current_comp
+        })
+
+    print("Phase 2 done")
+    print(f"Best compactness (cut edges): {best_score}")
     return best_partition, pd.DataFrame(step_data)
 
 def run_chain(chain_num, partition_file, phase_length, epsilon=0.05, initial_assignment=None, file_id=""):
@@ -489,6 +550,123 @@ def run_chain(chain_num, partition_file, phase_length, epsilon=0.05, initial_ass
 
     return phase2_best, combined_stats
 
+def run_chain_recom(chain_num, partition_file, phase_length, epsilon=0.05, initial_assignment=None, file_id=""):
+    # phase 1: optimize population
+    phase1_best, phase1_stats = run_phase1(
+        chain_num,
+        partition_file,
+        phase_length, 
+        epsilon,
+        initial_assignment=initial_assignment  # Pass through initial_assignment
+    )
+
+    ideal_pop = sum(phase1_best["pop"].values()) / len(phase1_best["pop"])
+
+    # phase 1: stats
+    pop_array = np.array(list(phase1_best["pop"].values()))
+    print("\nPhase 1 Stats:")
+    print(f"   Min population: {pop_array.min()} ({abs((1 - pop_array.min()/ideal_pop)*100):.2f}% of ideal)")
+    print(f"   Max population: {pop_array.max()} ({abs((1 - pop_array.max()/ideal_pop)*100):.2f}% of ideal)")
+    # print(f"   Std Dev: {pop_array.std(ddof=1):,.2f}")
+    # print(f"   Max Deviation: {pop_max_dev(phase1_best):,.2f}\n")
+
+    # phase 2: optimize compactness with a population constraint
+    epsilon = 0.05
+    phase2_best, phase2_stats = run_phase2_recom(phase1_best, partition_file, phase_length, epsilon)
+
+    # phase 2: stats
+    comp_array = comp(phase2_best)
+    pop_array = np.array(list(phase2_best["pop"].values()))
+    print("\nPhase 2 Recom Stats:")
+    print(f"   Compactness (cut edges): {comp_array}")
+    print(f"   Min population: {pop_array.min()} ({abs((1 - pop_array.min()/ideal_pop)*100):.2f}% of ideal)")
+    print(f"   Max population: {pop_array.max()} ({abs((1 - pop_array.max()/ideal_pop)*100):.2f}% of ideal)")
+    # print(f"   Std Dev: {pop_array.std(ddof=1):,.2f}")
+    # print(f"   Max Deviation: {pop_max_dev(phase2_best):,.2f}\n")
+
+    # Combine phase1 and phase2 stats
+    combined_stats = pd.concat([phase1_stats, phase2_stats], ignore_index=True)
+
+    # Save final scores and stats
+    if chain_num == 0:
+        scores_dict = {
+            "phase1_pop_scores": phase1_stats['pop_score'].tolist(),
+            "phase1_pop_max_dev": phase1_stats['pop_max_dev'].tolist(),
+            "phase1_comp_scores": phase1_stats['comp'].tolist(),
+            "phase2_pop_scores": phase2_stats['pop_score'].tolist(),
+            "phase2_comp_scores": phase2_stats['comp_score'].tolist(),
+            "phase2_pop_max_dev": phase2_stats['pop_max_dev'].tolist(),
+            "all_iterations": combined_stats['iteration'].tolist()
+        }
+        with open('./results/chain-final-scores/spanning_tree_scores_recom.json', 'w') as f:
+            json.dump(scores_dict, f)
+            
+    elif chain_num == 1:
+        scores_dict = {
+            "phase1_pop_scores": phase1_stats['pop_score'].tolist(),
+            "phase1_pop_max_dev": phase1_stats['pop_max_dev'].tolist(),
+            "phase1_comp": phase1_stats['comp'].tolist(),
+            "phase2_pop_scores": phase2_stats['pop_score'].tolist(),
+            "phase2_comp_scores": phase2_stats['comp_score'].tolist(),
+            "phase2_pop_max_dev": phase2_stats['pop_max_dev'].tolist(),
+            "all_iterations": combined_stats['iteration'].tolist()
+        }
+        with open('./results/chain-final-scores/random_nodes_scores_recom.json', 'w') as f:
+            json.dump(scores_dict, f)
+            
+    else:
+        scores_dict = {
+            "phase1_pop_scores": phase1_stats['pop_score'].tolist(),
+            "phase1_pop_max_dev": phase1_stats['pop_max_dev'].tolist(),
+            "phase1_comp": phase1_stats['comp'].tolist(),
+            "phase2_pop_scores": phase2_stats['pop_score'].tolist(),
+            "phase2_comp_scores": phase2_stats['comp_score'].tolist(),
+            "phase2_pop_max_dev": phase2_stats['pop_max_dev'].tolist(),
+            "all_iterations": combined_stats['iteration'].tolist()
+        }
+        with open('./results/chain-final-scores/current_districting_scores_recom.json', 'w') as f:
+            json.dump(scores_dict, f)
+
+    # plot stats
+    plt.figure(figsize=(12, 5))
+
+    # phase 1: plot
+    plt.subplot(1, 2, 1)
+    plt.plot(phase1_stats["iteration"], phase1_stats["pop_score"], label="Population Metric")
+    plt.plot(phase1_stats["iteration"], phase1_stats["comp"], label="Cut Edges")
+    plt.title("Phase 1: Population Metric vs. Compactness Over Iterations")
+    plt.xlabel("Iteration")
+    plt.ylabel("Score")
+    plt.legend()
+
+    # phase 2: plot
+    plt.subplot(1, 2, 2)
+    plt.plot(phase2_stats["iteration"], phase2_stats["comp_score"], label="Compactness (Cut Edges)")
+    plt.title("Phase 2 Recom: Compactness Over Iterations")
+    plt.xlabel("Iteration")
+    plt.ylabel("Cut Edges")
+    plt.legend()
+
+    plt.tight_layout()
+    if chain_num == 0:
+        with open(f'./results/chain-final-partitions/spanning_tree_final_partition{file_id}_recom.json', 'w') as f:
+            json.dump({str(k): v for k, v in phase2_best.assignment.items()}, f)
+        plt.savefig(f"./results/chain-final-stats/spanning_tree_stats{file_id}_recom.png")
+        # plt.show()
+    elif chain_num == 1:
+        with open(f'./results/chain-final-partitions/random_nodes_final_partition{file_id}_recom.json', 'w') as f:
+            json.dump({str(k): v for k, v in phase2_best.assignment.items()}, f)
+        plt.savefig(f"./results/chain-final-stats/random_nodes_stats{file_id}_recom.png")
+        # plt.show()
+    else:
+        with open(f'./results/chain-final-partitions/current_districting_final_partition{file_id}_recom.json', 'w') as f:
+            json.dump({str(k): v for k, v in phase2_best.assignment.items()}, f)
+        plt.savefig(f"./results/chain-final-stats/current_districting_stats{file_id}_recom.png")
+        # plt.show()
+    plt.close()
+
+    return phase2_best, combined_stats
+
 def verify_partition(graph, partition):
     """Verify that each district in the partition is contiguous."""
     districts = set(partition.values())
@@ -594,11 +772,10 @@ if __name__ == "__main__":
     # run_chain(chain_num=1, partition_file=partition_file, phase_length=phase_len, epsilon=epsilon, initial_assignment=random_nodes_partition)
     # run_chain(chain_num=2, partition_file=partition_file, phase_length=phase_len, epsilon=epsilon, initial_assignment=current_districting_partition)
 
-    for i in range(9, 10):
-        spanning_tree_partition = generate_spanning_tree_partition(graph, 52)
-        run_chain(chain_num=0, 
-                  partition_file=partition_file, 
-                  phase_length=phase_len, 
-                  epsilon=epsilon, 
-                  initial_assignment=spanning_tree_partition,
-                  file_id=i)
+    spanning_tree_partition = generate_spanning_tree_partition(graph, 52)
+    run_chain_recom(chain_num=0, 
+            partition_file=partition_file, 
+            phase_length=phase_len, 
+            epsilon=epsilon, 
+            initial_assignment=spanning_tree_partition,
+            file_id=0)
