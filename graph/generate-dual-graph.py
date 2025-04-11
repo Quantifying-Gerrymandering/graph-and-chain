@@ -252,38 +252,38 @@ positions = {node: (row.geometry.centroid.x, row.geometry.centroid.y)
 nx.draw(graph, pos=positions, node_size=10, edge_color="blue")
 plt.show()
 
-if len(components) > 1:
-    # sort components in decreasing size
-    components = sorted(components, key=len, reverse=True)
+# if len(components) > 1:
+#     # sort components in decreasing size
+#     components = sorted(components, key=len, reverse=True)
     
-    print(f"\nMain component size: {len(components[0])} nodes")
-    print("Disconnected components:")
+#     print(f"\nMain component size: {len(components[0])} nodes")
+#     print("Disconnected components:")
     
-    for i, component in enumerate(components[1:], 1):
-        print(f"\nComponent {i} ({len(component)} nodes):")
+#     for i, component in enumerate(components[1:], 1):
+#         print(f"\nComponent {i} ({len(component)} nodes):")
 
-        geoids = [gdf.iloc[node]["GEOID20"] for node in component]
-        print("GEOIDs:", geoids)
+#         geoids = [gdf.iloc[node]["GEOID20"] for node in component]
+#         print("GEOIDs:", geoids)
         
-        # find closest nodes in main component
-        main_component = components[0]
-        min_distance = float('inf')
-        closest_pair = None
+#         # find closest nodes in main component
+#         main_component = components[0]
+#         min_distance = float('inf')
+#         closest_pair = None
         
-        for node1 in component:
-            point1 = gdf.iloc[node1].geometry.centroid
-            for node2 in main_component:
-                point2 = gdf.iloc[node2].geometry.centroid
-                dist = point1.distance(point2)
-                if dist < min_distance:
-                    min_distance = dist
-                    closest_pair = (node1, node2)
+#         for node1 in component:
+#             point1 = gdf.iloc[node1].geometry.centroid
+#             for node2 in main_component:
+#                 point2 = gdf.iloc[node2].geometry.centroid
+#                 dist = point1.distance(point2)
+#                 if dist < min_distance:
+#                     min_distance = dist
+#                     closest_pair = (node1, node2)
         
-        if closest_pair:
-            print(f"Closest connection:")
-            print(f"  Node 1: {gdf.iloc[closest_pair[0]]['GEOID20']}")
-            print(f"  Node 2: {gdf.iloc[closest_pair[1]]['GEOID20']}")
-            print(f"  Distance: {min_distance}")
+#         if closest_pair:
+#             print(f"Closest connection:")
+#             print(f"  Node 1: {gdf.iloc[closest_pair[0]]['GEOID20']}")
+#             print(f"  Node 2: {gdf.iloc[closest_pair[1]]['GEOID20']}")
+#             print(f"  Distance: {min_distance}")
 
 print(nx.is_connected(graph))
 
