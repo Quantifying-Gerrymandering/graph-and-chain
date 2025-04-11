@@ -1,10 +1,14 @@
+import geopandas as gpd
 from gerrychain import Graph, Partition
 import networkx as nx
 import matplotlib.pyplot as plt
+from functools import partial
 import pandas as pd
 import numpy as np
 import math
+import os
 import random
+import scipy
 from gen_partition_random_starting_nodes import grow_districts
 from gen_partition_spanning_tree import generate_spanning_tree_partition
 from gerrychain.updaters import Tally, cut_edges
@@ -13,7 +17,6 @@ from gerrychain.constraints import contiguous, within_percent_of_ideal_populatio
 from gerrychain.proposals import propose_random_flip
 from gerrychain.optimization import SingleMetricOptimizer
 import json
-from pathlib import Path
 
 # population metric: penalizes imbalances
 def pop_with_comp(partition):
@@ -52,73 +55,14 @@ class MyOptimizer(SingleMetricOptimizer):
                 return True
             score_delta = self.score(part) - self.score(part.parent)
             beta = beta_function(part[self._step_indexer])
-            if self._maximize:
-                score_delta *= -1
+            if self._maximize: score_delta *= -1
             exponent = -beta * beta_magnitude * score_delta
-            if exponent < -700:
-                probability = 0.0
-            elif exponent > 1:
-                probability = 1.0
-            else:
-                probability = math.exp(exponent)
+            if exponent < -700: probability = 0.0
+            elif exponent > 1: probability = 1.0
+            else: probability = math.exp(exponent)
             return random.random() < probability
 
         return acceptance_function
-
-# phase 1: optimize population (original implementation)
-# def run_phase1(partition_file, hot_phases, cooldown_phases, cold_phases, phase_length, epsilon=0.05):
-#     graph = Graph.from_json(partition_file)
-
-#     assignment_dict = {node: graph.nodes[node]["district_id"] for node in graph.nodes()}
-    
-#     initial_partition = Partition(
-#         graph,
-#         assignment=assignment_dict,
-#         updaters={
-#             "pop": Tally("CENS_Total", alias="pop"),
-#             "cut_edges": cut_edges,
-#         }
-#     )
-
-#     # print(f"Initial assignment type: {type(initial_partition.assignment)}")
-    
-#     total_steps = (hot_phases + cooldown_phases + cold_phases) * phase_length
-
-#     constraints = [contiguous]
-
-#     optimizer = MyOptimizer(
-#         proposal=propose_random_flip,
-#         constraints=constraints,
-#         initial_state=initial_partition,
-#         optimization_metric=pop_with_comp,
-#         maximize=False
-#     )
-
-#     best_partition = None
-#     best_score = float("inf")
-#     step_data = []
-
-#     for i, part in enumerate(
-#         optimizer.simulated_annealing(
-#             total_steps,
-#             linear_piecewise_beta(hot_phases, cooldown_phases, cold_phases, phase_length),
-#             beta_magnitude=0.75,
-#             with_progress_bar=True
-#         )
-#     ):
-#         current_score = pop_with_comp(part)
-#         if current_score < best_score:
-#             best_score = current_score
-#             best_partition = part
-
-#         step_data.append({
-#             "iteration": i,
-#             "pop_score": current_score,
-#             "pop_max_dev": pop_max_dev(part),
-#             "comp": comp(part)
-#         })
-
-#     return best_partition, pd.DataFrame(step_data)
 
 # phase 1: optimize population (new implementation with additional steps to ensure population balance)
 def run_phase1(chain_num, partition_file, phase_length, epsilon=0.05, initial_assignment=None):
@@ -208,70 +152,6 @@ def run_phase1(chain_num, partition_file, phase_length, epsilon=0.05, initial_as
         })
 
     steps_completed += total_steps
-
-    # # Check if we need additional steps
-    # while True:
-    #     max_deviation = calculate_max_deviation(best_partition)
-    #     if max_deviation <= epsilon:
-    #         print(f"\nPhase 1 achieved population balance within epsilon ({max_deviation:.3%} ≤ {epsilon:.3%})")
-    #         break
-    #     else:
-    #         print(f"\nPhase 1 population balance not achieved: {max_deviation:.3%} > {epsilon:.3%}")
-    #         # print(f"Worst deviation seen: {worst_deviation:.3%}")
-    #         print(f"Continuing chain for additional steps...")
-
-    #         # Create new optimizer starting from best partition
-    #         optimizer = MyOptimizer(
-    #             proposal=propose_random_flip,
-    #             constraints=constraints,
-    #             initial_state=best_partition,  # Start from best partition
-    #             optimization_metric=pop_with_comp,
-    #             maximize=False
-    #         )
-
-    #         additional_steps = (40 * phase_length)
-    #         current_chain = optimizer.simulated_annealing(
-    #         additional_steps,
-    #             linear_piecewise_beta(
-    #                 hot_phases=5,      # 25% hot
-    #                 cooldown_phases=25, # 50% cooldown
-    #                 cold_phases=20,      # 25% cold
-    #                 phase_length=phase_length
-    #             ),
-    #             beta_magnitude=0.75,
-    #             with_progress_bar=True
-    #     )
-
-    #         # current_chain = optimizer.simulated_annealing(
-    #         #     additional_steps,
-    #         #     constant_cold_beta,
-    #         #     beta_magnitude=0.75,
-    #         #     with_progress_bar=True
-    #         # )
-
-    #         for i, part in enumerate(current_chain):
-    #             current_score = pop_with_comp(part)
-    #             max_deviation = calculate_max_deviation(part)
-                
-    #             # Debug print for every 1000 steps
-    #             if i % 1000 == 0:
-    #                 print(f"Step {steps_completed + i}: Max deviation = {max_deviation:.3%}")
-                
-    #             # Track best partition by score
-    #             if current_score < best_score:
-    #                 best_score = current_score
-    #                 best_partition = part
-
-    #             step_data.append({
-    #                 "iteration": steps_completed + i,
-    #                 "pop_score": current_score,
-    #                 "min_pop": min(part["pop"].values()),
-    #                 "max_pop": max(part["pop"].values()),
-    #                 "pop_max_dev": max_deviation,
-    #                 "comp": comp(part)
-    #             })
-
-    #         steps_completed += additional_steps
 
     return best_partition, pd.DataFrame(step_data)
 
@@ -364,9 +244,6 @@ def run_phase2(phase1_partition, partition_file, phase_length, epsilon=0.01):
             "pop_max_dev": pop_max_dev(part),
             "comp_score": current_comp
         })
-
-    # print("Phase 2 done")
-    # print(f"Best compactness (cut edges): {best_score}")
     return best_partition, pd.DataFrame(step_data)
 
 def run_chain(chain_num, partition_file, phase_length, epsilon=0.05, initial_assignment=None, file_id=""):
@@ -551,45 +428,6 @@ if __name__ == "__main__":
     epsilon = 0.05
 
     graph = Graph.from_json(partition_file)
-    # gdf = gpd.read_file(f"../data/shapefile_with_islands/{shapefile}")
-
-    # spanning_tree_partition = generate_spanning_tree_partition(graph, 52)
-    # # save to json file (don't use unless necessary, the partitions saved now work with the chain)
-    # with open('./chain-initial-partitions/spanning_tree_partition.json', 'w') as f:
-    #     json.dump({str(k): v for k, v in spanning_tree_partition.items()}, f)
-    # # read from existing json file
-    # with open('./chain-initial-partitions/spanning_tree_initial_partition.json', 'r') as f:
-    #     spanning_tree_partition = {int(k): v for k, v in json.load(f).items()}
-
-    # random_nodes_partition = grow_districts(graph, 52, gdf)
-    # # save to json file (don't use unless necessary, the partitions saved now work with the chain)
-    # with open('./chain-initial-partitions/random_nodes_partition.json', 'w') as f:
-    #     json.dump({str(k): v for k, v in random_nodes_partition.items()}, f)
-    # # read from existing json file
-    # with open('./chain-initial-partitions/random_nodes_initial_partition.json', 'r') as f:
-    #     random_nodes_partition = {int(k): v for k, v in json.load(f).items()}
-
-    # current_districting_partition = {node: graph.nodes[node]["district_i"] for node in graph.nodes()}
-    # # save to json file (don't use unless necessary, the partitions saved now work with the chain)
-    # with open('./chain-initial-partitions/current_districting_initial_partition.json', 'w') as f:
-    #     json.dump({str(k): v for k, v in current_districting_initial_partition.items()}, f)
-    # # read from existing json file
-    # with open('./chain-initial-partitions/current_districting_initial_partition.json', 'r') as f:
-    #     current_districting_partition = {int(k): v for k, v in json.load(f).items()}
-
-    # # Before running chain, verify everything
-    # print("\nVerifying graph and initial partition...")
-    # print(f"Graph is connected: {nx.is_connected(graph)}")
-    # print(f"Number of nodes: {len(graph.nodes)}")
-
-    # # Get district assignments and verify
-    # current_districting_partition = {node: graph.nodes[node]["district_i"] for node in graph.nodes()}
-    # verify_partition(graph, current_districting_partition)
-
-    # Then run the chain
-    # run_chain(chain_num=0, partition_file=partition_file, phase_length=phase_len, epsilon=epsilon, initial_assignment=spanning_tree_partition)
-    # run_chain(chain_num=1, partition_file=partition_file, phase_length=phase_len, epsilon=epsilon, initial_assignment=random_nodes_partition)
-    # run_chain(chain_num=2, partition_file=partition_file, phase_length=phase_len, epsilon=epsilon, initial_assignment=current_districting_partition)
 
     for i in range(9, 10):
         spanning_tree_partition = generate_spanning_tree_partition(graph, 52)
