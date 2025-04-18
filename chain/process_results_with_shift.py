@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 
 def process_results(partition_type, percentShiftR=0):
-    shapefile = "./graph-and-chain-process-spanning-trees/data/shapefile_with_islands/shapefile_with_islands.shp"
+    shapefile = "./data/shapefile_with_islands/shapefile_with_islands.shp"
     dem_votes = []
     rep_votes = []
 
@@ -24,11 +24,11 @@ def process_results(partition_type, percentShiftR=0):
 
     for file_id in range(num_files):
         if partition_type == "spanning_tree":
-            partition_assignment_file = f"./graph-and-chain-process-spanning-trees/chain/results/chain-final-partitions/spanning_tree_final_partition{file_id}.json"
+            partition_assignment_file = f"./chain/results/chain-final-partitions/spanning_tree_final_partition{file_id}.json"
         elif partition_type == "random_nodes":
-            partition_assignment_file = f"./graph-and-chain-process-spanning-trees/chain/results/chain-final-partitions/random_nodes_final_partition{file_id}.json"
+            partition_assignment_file = f"./chain/results/chain-final-partitions/random_nodes_final_partition{file_id}.json"
         elif partition_type == "current_districting":
-            partition_assignment_file = f"./graph-and-chain-process-spanning-trees/chain/results/chain-final-partitions/current_districting_final_partition{file_id}.json"
+            partition_assignment_file = f"./chain/results/chain-final-partitions/current_districting_final_partition{file_id}.json"
 
         with open(partition_assignment_file) as f:
             assignment = json.load(f)
@@ -126,8 +126,8 @@ def plot_seat_distribution(votes, partition_type, party_name):
     plt.grid(True, alpha=0.3)
 
     # Save plot
-    os.makedirs("./graph-and-chain-process-spanning-trees/chain/results/experiment2_initial_partitions", exist_ok=True)
-    plt.savefig(f"./graph-and-chain-process-spanning-trees/chain/results/experiment2_initial_partitions/{partition_type}_{party_name.lower()}_seats_distribution.png")
+    os.makedirs("./chain/results/experiment2_initial_partitions", exist_ok=True)
+    plt.savefig(f"./chain/results/experiment2_initial_partitions/{partition_type}_{party_name.lower()}_seats_distribution.png")
     plt.show()
 
 if __name__ == "__main__":
