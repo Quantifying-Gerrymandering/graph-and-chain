@@ -132,9 +132,9 @@ def plot_seat_distribution(votes, partition_type, party_name):
 
 if __name__ == "__main__":
     # options: spanning_tree, random_nodes, current_districting
-    process_results("spanning_tree", percentShiftR=3)
-    #process_results("random_nodes", percentShiftR=6)
-    #process_results("current_districting")
+    process_results("spanning_tree", percentShiftR=5)
+    process_results("random_nodes", percentShiftR=5)
+    process_results("current_districting", percentShiftR=5)
 
 
 # Use function for both parties
