@@ -12,8 +12,8 @@ if __name__ == "__main__":
     dem_votes = []
     rep_votes = []
 
-    for file_id in range(10):
-        partition_assignment_file = f"results/chain-final-partitions/spanning_tree_final_partition{file_id}.json"
+    for file_id in range(74):
+        partition_assignment_file = f"results/chain-final-partitions/spanning_tree_final_partition{file_id}_recom.json"
 
         with open(partition_assignment_file) as f:
             assignment = json.load(f)
@@ -37,8 +37,8 @@ if __name__ == "__main__":
         print(f"partiition: {file_id}")
         print(sum(dem_vote[i] > rep_vote[i] for i in range(52)))
         print(sum(dem_vote[i] < rep_vote[i] for i in range(52)))
-        dem_votes.append(sum(dem_vote[i] > rep_vote[i] for i in range(52)))
-        rep_votes.append(sum(dem_vote[i] < rep_vote[i] for i in range(52)))
+        dem_votes.append(int(sum(dem_vote[i] > rep_vote[i] for i in range(52))))
+        rep_votes.append(int(sum(dem_vote[i] < rep_vote[i] for i in range(52))))
 
     print(dem_votes)
     print(rep_votes)
@@ -48,6 +48,8 @@ if __name__ == "__main__":
     x = np.linspace(40, 52, 100)
     pdf = norm.pdf(x, mu, sigma)
     plt.plot(x, pdf, 'r', linewidth=2, label=f'Normal Fit ($\\mu$={mu:.2f}, $\\sigma$={sigma:.2f})')
+
+    plt.xticks(np.arange(min(dem_votes), max(dem_votes) + 1, 1))
 
     # Labels and title
     plt.xlabel('Value')

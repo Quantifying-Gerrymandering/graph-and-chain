@@ -16,6 +16,7 @@ from gerrychain import MarkovChain
 from gerrychain.constraints import contiguous, within_percent_of_ideal_population
 from gerrychain.proposals import propose_random_flip
 from gerrychain.optimization import SingleMetricOptimizer
+from gerrychain.tree import bipartition_tree
 from gerrychain.proposals import recom
 from gerrychain.accept import always_accept
 import json
@@ -168,11 +169,11 @@ def run_phase1(chain_num, partition_file, phase_length, epsilon=0.05, initial_as
         maximize=False
     )
 
-    hot_phases, cooldown_phases, cold_phases = 10, 100, 40
+    hot_phases, cooldown_phases, cold_phases = 30, 150, 40
     if chain_num == 0:
-        beta_magnitude = 0.75
+        beta_magnitude = 1
     elif chain_num == 1:
-        beta_magnitude = 0.5
+        beta_magnitude = 0.75
     else:
         beta_magnitude = 0.5 # 0.25
 
@@ -392,6 +393,11 @@ def run_phase2_recom(phase1_partition, partition_file, phase_length, epsilon=0.0
         }
     )
 
+    constraints = [
+        contiguous,
+        custom_within_percent_of_ideal_population(epsilon, pop_key="pop")
+    ]
+
     ideal_population = sum(initial_partition["pop"].values()) / len(initial_partition)
 
     proposal = partial(
@@ -399,12 +405,16 @@ def run_phase2_recom(phase1_partition, partition_file, phase_length, epsilon=0.0
         pop_col="CENS_Total",
         pop_target=ideal_population,
         epsilon=epsilon,
-        node_repeats=2
+        node_repeats=10,
+        method = partial(
+            bipartition_tree,
+            max_attempts=10000,
+        )
     )
 
     recom_chain = MarkovChain(
         proposal=proposal,
-        constraints=[contiguous],
+        constraints=constraints,
         accept=always_accept,
         initial_state=initial_partition,
         total_steps=phase_length
@@ -732,7 +742,7 @@ if __name__ == "__main__":
     epsilon = 0.05
 
     graph = Graph.from_json(partition_file)
-    # gdf = gpd.read_file(f"../data/shapefile_with_islands/{shapefile}")
+    gdf = gpd.read_file(f"../data/shapefile_with_islands/{shapefile}")
 
     # spanning_tree_partition = generate_spanning_tree_partition(graph, 52)
     # # save to json file (don't use unless necessary, the partitions saved now work with the chain)
@@ -772,10 +782,28 @@ if __name__ == "__main__":
     # run_chain(chain_num=1, partition_file=partition_file, phase_length=phase_len, epsilon=epsilon, initial_assignment=random_nodes_partition)
     # run_chain(chain_num=2, partition_file=partition_file, phase_length=phase_len, epsilon=epsilon, initial_assignment=current_districting_partition)
 
-    spanning_tree_partition = generate_spanning_tree_partition(graph, 52)
-    run_chain_recom(chain_num=0, 
-            partition_file=partition_file, 
-            phase_length=phase_len, 
-            epsilon=epsilon, 
-            initial_assignment=spanning_tree_partition,
-            file_id=0)
+    random.seed(17)
+    i = 51
+    while True:
+        try:
+            spanning_tree_partition = generate_spanning_tree_partition(graph, 52)
+            run_chain_recom(chain_num=0, 
+                    partition_file=partition_file, 
+                    phase_length=phase_len, 
+                    epsilon=epsilon, 
+                    initial_assignment=spanning_tree_partition,
+                    file_id=i)
+            i += 1
+        except Exception as e:
+            print(e)
+            continue
+            
+            
+
+    # random_nodes_partition = grow_districts(graph, 52, gdf)
+    # run_chain_recom(chain_num=1, 
+    #     partition_file=partition_file, 
+    #     phase_length=phase_len, 
+    #     epsilon=epsilon, 
+    #     initial_assignment=random_nodes_partition,
+    #     file_id=0)
